@@ -1,0 +1,9 @@
+[package]
+name = "recur-fn"
+version = "0.1.0"
+authors = ["Jason Lee <jason5lee@hotmail.com>"]
+description = "Recursive function trait and related tools."
+edition = "2018"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
