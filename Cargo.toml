@@ -6,4 +6,9 @@ description = "Recursive function trait and related tools."
 edition = "2018"
 license = "MIT OR Apache-2.0"
 
-[dependencies]
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "fib_benchmark"
+harness = false

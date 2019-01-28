@@ -1,32 +1,66 @@
-/// The trait representing a recursive function.
+/// The recursive function trait.
 ///
 /// Instead of recurring directly,
-/// this trait uses an injection parameter for recursion,
-/// as you can see in `body` method.
-///
-/// Note that the implementation of this trait may not really recur,
-/// i.e. the body method may not call `recur` parameter.
-/// In fact, all implementation of `Fn(Arg) -> Output` implements `RecurFn<Arg, Output>`.
+/// this trait allows user to customize the recursion
+/// by accepting `Fn`-type parameter.
+/// In this way, we can extract or extend the body of the recursive function.
 ///
 /// This trait only supports one argument.
-/// If you want to have multiple arguments, use tuple.
+/// If you need multiple arguments, use tuple.
 pub trait RecurFn<Arg, Output> {
     /// The body of the recursive function.
-    fn body<F: Fn(Arg) -> Output>
-    (&self, recur: F, arg: Arg) -> Output;
+    fn body<Recur: Fn(Arg) -> Output>
+    (&self, recur: Recur, arg: Arg) -> Output;
 
     /// Calls the recursive function.
+    #[inline]
     fn call(&self, arg: Arg) -> Output {
         self.body(|arg| self.call(arg), arg)
     }
 }
 
-/// Implement `RecurFn<Arg, Output>` for the normal function `Fn(Arg) -> Output`.
-/// The implementation calls the function directly, without calling `recur`.
+/// Implements `RecurFn<Arg, Output>` for `Fn(Arg) -> Output`.
+/// It calls the function directly, without calling `recur` parameter.
 impl<Arg, Output, F: Fn(Arg) -> Output> RecurFn<Arg, Output> for F {
-    fn body<F_: Fn(Arg) -> Output>(&self, _recur: F_, arg: Arg) -> Output {
+    fn body<Recur: Fn(Arg) -> Output>(&self, _recur: Recur, arg: Arg) -> Output {
         self(arg)
     }
+}
+
+/// Constructs a `RecurFn` by a closure.
+/// This is the most convenient to construct an anonymous `RecurFn`.
+///
+/// ## Examples
+///
+/// ```
+/// use recur_fn::*;
+///
+/// let fib = recur_fn(|fib, n: u64| {
+///     if n <= 1 {
+///         n
+///     } else {
+///         fib(n - 1) + fib(n - 2)
+///     }
+/// });
+///
+/// assert_eq!(55, fib.call(10));
+/// ```
+pub fn recur_fn<Arg, Output, F: Fn(&Fn(Arg) -> Output, Arg) -> Output>(body: F) -> impl RecurFn<Arg, Output> {
+    struct RecurFnImpl<F>(F);
+
+    impl<Arg, Output, F> RecurFn<Arg, Output> for RecurFnImpl<F>
+        where F: Fn(&Fn(Arg) -> Output, Arg) -> Output
+    {
+        fn body<Recur: Fn(Arg) -> Output>(&self, recur: Recur, arg: Arg) -> Output {
+            (self.0)(&recur, arg)
+        }
+
+        fn call(&self, arg: Arg) -> Output {
+            (self.0)(&|arg| self.call(arg), arg)
+        }
+    }
+
+    RecurFnImpl(body)
 }
 
 #[cfg(test)]
@@ -38,17 +72,17 @@ mod tests {
         let fib = {
             struct Fib {}
             impl RecurFn<usize, usize> for Fib {
-                fn body<F: Fn(usize) -> usize>(&self, recur: F, arg: usize) -> usize {
-                    if arg <= 2 {
-                        1
+                fn body<F: Fn(usize) -> usize>(&self, fib: F, n: usize) -> usize {
+                    if n <= 1 {
+                        n
                     } else {
-                        recur(arg - 1) + recur(arg - 2)
+                        fib(n - 1) + fib(n - 2)
                     }
                 }
             }
             Fib {}
         };
-        for (index, expect) in [1, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55].into_iter().enumerate() {
+        for (index, expect) in [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55].into_iter().enumerate() {
             assert_eq!(fib.call(index), *expect);
         }
     }
