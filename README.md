@@ -1,6 +1,6 @@
 # RecurFn
 
-A library that provides you a more flexible way to construct and extend the recursive function.
+A Rust library that provides you a more flexible way to construct and extend the recursive function.
 
 For more information detail, see [API reference](https://docs.rs/recur-fn).
 
