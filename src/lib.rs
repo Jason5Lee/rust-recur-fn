@@ -56,7 +56,7 @@
 //!     struct Fib {}
 //!     impl RecurFn<u64, u64> for Fib {
 //!         // It's highly recommended to mark `body` method as `#[inline]`,
-//!         // otherwise, calling it would be as slow as the one constructed by `recur_fn`,
+//!         // otherwise, calling it would not be faster than using `recur_fn`,
 //!         // which is against the purpose of implementing `RecurFn` manually.
 //!         #[inline]
 //!         fn body<F: Fn(u64) -> u64>(&self, fib: F, n: u64) -> u64 {
@@ -87,12 +87,14 @@
 //!     fact.body(|_| 0, 3));
 //! ```
 
+#![no_std]
+
 /// The recursive function trait.
 ///
 /// Instead of recurring directly,
 /// this trait allows user to customize the recursion
 /// by accepting `Fn`-type parameter.
-/// In this way, we can extract or extend the body of the recursive function.
+/// In this way, we can extract and extend the body of the recursive function.
 ///
 /// This trait only supports one argument.
 /// If you need multiple arguments, use tuple.
@@ -104,7 +106,7 @@ pub trait RecurFn<Arg, Output> {
     fn body<Recur: Fn(Arg) -> Output>
     (&self, recur: Recur, arg: Arg) -> Output;
 
-    /// Call the recursive function.
+    /// Calls the recursive function.
     #[inline]
     fn call(&self, arg: Arg) -> Output {
         self.body(|arg| self.call(arg), arg)
@@ -153,7 +155,8 @@ impl<Arg, Output, F: Fn(Arg) -> Output> RecurFn<Arg, Output> for F {
 ///
 /// assert_eq!(55, fib.call(10));
 /// ```
-pub fn recur_fn<Arg, Output, F: Fn(&Fn(Arg) -> Output, Arg) -> Output>(body: F) -> impl RecurFn<Arg, Output> {
+pub fn recur_fn<Arg, Output, F>(body: F) -> impl RecurFn<Arg, Output>
+where F: Fn(&Fn(Arg) -> Output, Arg) -> Output {
     struct RecurFnImpl<F>(F);
 
     impl<Arg, Output, F> RecurFn<Arg, Output> for RecurFnImpl<F>
@@ -171,12 +174,10 @@ pub fn recur_fn<Arg, Output, F: Fn(&Fn(Arg) -> Output, Arg) -> Output>(body: F) 
     RecurFnImpl(body)
 }
 
-/// Constructs a zero-cost `RecurFn` implementation.
-///
-/// Note that this trait doesn't support capturing.
+/// Constructs a zero-cost `RecurFn` implementation that doesn't capture.
 ///
 /// You can consider it as a function definition,
-/// except `fn` keyword is replaced with this macro.
+/// except `fn` keyword is replaced by this macro.
 ///
 /// So it's recommended to first write function definition and then
 /// change it into this macro, so that the IDE's features can work while
