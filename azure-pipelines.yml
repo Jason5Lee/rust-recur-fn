@@ -32,11 +32,11 @@ jobs:
         curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain $RUSTUP_TOOLCHAIN
         echo "##vso[task.setvariable variable=PATH;]$PATH:$HOME/.cargo/bin"
       displayName: Install rust
-  - script: |
-        rustc -Vv
-        cargo -V
-    displayName: Query rust and cargo versions
-  - script: cargo install --debug cargo-make
-    displayName: install cargo-make
-  - script: cargo make ci-flow
-    displayName: ci flow
+    - script: |
+          rustc -Vv
+          cargo -V
+      displayName: Query rust and cargo versions
+    - script: cargo install --debug cargo-make
+      displayName: install cargo-make
+    - script: cargo make ci-flow
+      displayName: ci flow
