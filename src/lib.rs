@@ -103,8 +103,7 @@ pub trait RecurFn<Arg, Output> {
     ///
     /// Performance tip: mark this method `#[inline]` to make the
     /// `call` method as fast as recurring directly.
-    fn body<Recur: Fn(Arg) -> Output>
-    (&self, recur: Recur, arg: Arg) -> Output;
+    fn body<Recur: Fn(Arg) -> Output>(&self, recur: Recur, arg: Arg) -> Output;
 
     /// Calls the recursive function.
     #[inline]
@@ -156,11 +155,14 @@ impl<Arg, Output, F: Fn(Arg) -> Output> RecurFn<Arg, Output> for F {
 /// assert_eq!(55, fib.call(10));
 /// ```
 pub fn recur_fn<Arg, Output, F>(body: F) -> impl RecurFn<Arg, Output>
-where F: Fn(&Fn(Arg) -> Output, Arg) -> Output {
+where
+    F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
+{
     struct RecurFnImpl<F>(F);
 
     impl<Arg, Output, F> RecurFn<Arg, Output> for RecurFnImpl<F>
-        where F: Fn(&Fn(Arg) -> Output, Arg) -> Output
+    where
+        F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
     {
         fn body<Recur: Fn(Arg) -> Output>(&self, recur: Recur, arg: Arg) -> Output {
             (self.0)(&recur, arg)
@@ -197,19 +199,21 @@ where F: Fn(&Fn(Arg) -> Output, Arg) -> Output {
 /// ```
 #[macro_export]
 macro_rules! as_recur_fn {
-    ($fn_name:ident ($arg_name:ident: $arg_type:ty) -> $output_type:ty $body:block) => {
-        {
-            struct RecurFnImpl {}
+    ($fn_name:ident ($arg_name:ident: $arg_type:ty) -> $output_type:ty $body:block) => {{
+        struct RecurFnImpl {}
 
-            impl RecurFn<$arg_type, $output_type> for RecurFnImpl {
-                #[inline]
-                fn body<Recur: Fn($arg_type) -> $output_type>(&self, $fn_name: Recur, $arg_name: $arg_type) -> $output_type {
-                    $body
-                }
+        impl RecurFn<$arg_type, $output_type> for RecurFnImpl {
+            #[inline]
+            fn body<Recur: Fn($arg_type) -> $output_type>(
+                &self,
+                $fn_name: Recur,
+                $arg_name: $arg_type,
+            ) -> $output_type {
+                $body
             }
-            RecurFnImpl {}
         }
-    }
+        RecurFnImpl {}
+    }};
 }
 #[cfg(test)]
 mod tests {
@@ -236,23 +240,30 @@ mod tests {
     #[test]
     fn fn_works() {
         let mul2 = |n: u64| n * 2;
-            assert_eq!(14, RecurFn::call(&mul2, 7));
-            assert_eq!(14, mul2.body(
-                |_| panic!("Fn implementation should not recur."), 7));
+        assert_eq!(14, RecurFn::call(&mul2, 7));
+        assert_eq!(
+            14,
+            mul2.body(|_| panic!("Fn implementation should not recur."), 7)
+        );
     }
 
     #[test]
     fn as_recur_fn_works() {
         fn fact_direct(n: u64) -> u64 {
-            if n == 0 { 1 } else { n * fact_direct(n - 1) }
+            if n == 0 {
+                1
+            } else {
+                n * fact_direct(n - 1)
+            }
         }
-        assert_eq!(6, RecurFn::body(&fact_direct,
-            |_| panic!("This would not be executed"), 3));
+        assert_eq!(
+            6,
+            RecurFn::body(&fact_direct, |_| panic!("This would not be executed"), 3)
+        );
         let fact = as_recur_fn!(fact(n: u64) -> u64 {
             if n == 0 { 1 } else { n * fact(n - 1) }
         });
         assert_eq!(6, fact.call(3));
-        assert_eq!(0,
-            fact.body(|_| 0, 3));
+        assert_eq!(0, fact.body(|_| 0, 3));
     }
 }

@@ -39,13 +39,16 @@ impl RecurFn<u64, u64> for FibInline {
 }
 
 fn fib_recur_fn(n: u64) -> u64 {
-    recur_fn(|fib, n: u64| {
-        if n <= 1 {
-            n
-        } else {
-            fib(n - 1) + fib(n - 2)
-        }
-    }).call(n)
+    recur_fn(
+        |fib, n: u64| {
+            if n <= 1 {
+                n
+            } else {
+                fib(n - 1) + fib(n - 2)
+            }
+        },
+    )
+    .call(n)
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
