@@ -54,6 +54,10 @@ fn fib_recur_fn(n: u64) -> u64 {
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("fib_direct 20", |b| b.iter(|| fib_direct(20)));
     c.bench_function("Fib 20", |b| b.iter(|| Fib {}.call(20)));
+    c.bench_function("Fib Dyn 20", {
+        let dyn_fib: &dyn DynRecurFn<_, _> = &Fib {};
+        move |b| b.iter(|| dyn_fib.call(20))
+    });
     c.bench_function("FibInline 20", |b| b.iter(|| FibInline {}.call(20)));
     c.bench_function("fib_recur_fn 20", |b| b.iter(|| fib_recur_fn(20)));
 }

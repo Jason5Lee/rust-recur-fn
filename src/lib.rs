@@ -86,6 +86,21 @@
 //! assert_eq!(0,
 //!     fact.body(|_| 0, 3));
 //! ```
+//! 
+//! `DynRecurFn` is a dynamic version that allows to have atrait object.
+//! 
+//! ```
+//! use recur_fn::{RecurFn, DynRecurFn, recur_fn};
+//! 
+//! let fact: &DynRecurFn<_, _> = &recur_fn(|fact, n: u64| {
+//!     if n == 0 { 1 } else { n * fact(n - 1) }
+//! });
+//!
+//! assert_eq!(0, fact.body_dyn(&|_| 0, 3));
+//! // `dyn DynRecurFn` implements `RecurFn`.
+//! assert_eq!(6, fact.call(3));
+//! assert_eq!(0, fact.body(|_| 0, 3));
+//! ```
 
 #![no_std]
 
@@ -109,6 +124,30 @@ pub trait RecurFn<Arg, Output> {
     #[inline]
     fn call(&self, arg: Arg) -> Output {
         self.body(|arg| self.call(arg), arg)
+    }
+}
+
+/// The dynamic version of `RecurFn` that allows you
+/// to turn a `RecurFn` value into the trait object.
+pub trait DynRecurFn<Arg, Output> {
+    /// The body of the recursive function.
+    fn body_dyn(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
+}
+
+/// `RecurFn`s are `DynRecurFn`.
+impl <Arg, Output, RF: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for RF {
+    fn body_dyn(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
+        self.body(recur, arg)
+    }
+}
+
+/// `DynRecurFn`s are `RecurFn`.
+/// To avoid conflict, only `dyn DynRecurFn` implments,
+/// as the main purpose to use `DynRecurFn` is to turn
+/// `RecurFn` into a trait object.
+impl <Arg, Output> RecurFn<Arg, Output> for dyn DynRecurFn<Arg, Output> {
+    fn body<Recur: Fn(Arg) -> Output>(&self, recur: Recur, arg: Arg) -> Output {
+        self.body_dyn(&recur, arg)
     }
 }
 
