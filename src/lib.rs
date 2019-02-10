@@ -87,23 +87,33 @@
 //!     fact.body(|_| 0, 3));
 //! ```
 //!
-//! `DynRecurFn` is a dynamic version that allows to have a trait object.
+//! `DynRecurFn` is a dynamic version that allows you to have a trait object.
 //!
 //! ```
 //! use recur_fn::{recur_fn, RecurFn, DynRecurFn};
+//! use core::ops::Deref;
 //!
-//! let dyn_fact: &DynRecurFn<_, _> = &recur_fn(|fact, n: u64| {
-//!     if n == 0 { 1 } else { n * fact(n - 1) }
-//! });
+//! let dyn_fact: &DynRecurFn<_, _> =
+//!     &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
+//
 //! assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
 //! assert_eq!(3, dyn_fact.body(&|_| 1, 3));
-//!
 //! // `&dyn DynRecurFn` implements `RecurFn`.
-//! fn test_fact(fact: impl RecurFn<u64, u64>) {
+//! fn test_fact_impl(fact: impl RecurFn<u64, u64>) {
 //!     assert_eq!(6, fact.call(3));
 //!     assert_eq!(0, fact.body(|_| 0, 3));
 //! }
-//! test_fact(dyn_fact);
+//! test_fact_impl(dyn_fact);
+//!
+//! // `dyn DynRecurFn` implements `RecurFn`.
+//! fn test_fact_deref<D: Deref>(fact: D)
+//! where
+//!     D::Target: RecurFn<u64, u64>,
+//! {
+//!     assert_eq!(6, fact.call(3));
+//!     assert_eq!(0, fact.body(|_| 0, 3));
+//! }
+//! test_fact_deref(dyn_fact);
 //! ```
 
 #![no_std]
@@ -139,7 +149,7 @@ impl<Arg, Output, F: Fn(Arg) -> Output> RecurFn<Arg, Output> for F {
     }
 }
 
-/// The more dynamic `RecurFn` trait that supports trait object.
+/// The dynamic version of `RecurFn` that supports trait object.
 pub trait DynRecurFn<Arg, Output> {
     /// The body of the recursive function.
     fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
@@ -153,27 +163,38 @@ impl<Arg, Output, R: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for R {
     }
 }
 
-/// `dyn DynRecurFn` implement `RecurFn`.
-impl<Arg, Output> RecurFn<Arg, Output> for dyn DynRecurFn<Arg, Output> {
-    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-        self.dyn_body(&recur, arg)
-    }
+/// It's awful that a trait with markers no longer implements the traits
+/// it originally implements.
+macro_rules! dyn_recur_fn_impl_with_marker {
+    ( $( $marker:tt ),* ) => {
+        /// `dyn DynRecurFn` implement `RecurFn`.
+        impl<Arg, Output> RecurFn<Arg, Output> for dyn DynRecurFn<Arg, Output> $( + $marker)* {
+            fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+                self.dyn_body(&recur, arg)
+            }
 
-    fn call(&self, arg: Arg) -> Output {
-        self.dyn_body(&|arg| self.call(arg), arg)
-    }
+            fn call(&self, arg: Arg) -> Output {
+                self.dyn_body(&|arg| self.call(arg), arg)
+            }
+        }
+
+        /// `&dyn DynRecurFn` implement `RecurFn`.
+        impl<Arg, Output> RecurFn<Arg, Output> for &(dyn DynRecurFn<Arg, Output> $( + $marker)*) {
+            fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+                (*self).dyn_body(&recur, arg)
+            }
+
+            fn call(&self, arg: Arg) -> Output {
+                (*self).dyn_body(&|arg| self.call(arg), arg)
+            }
+        }
+    };
 }
 
-/// `&dyn DynRecurFn` implement `RecurFn`.
-impl<Arg, Output> RecurFn<Arg, Output> for &dyn DynRecurFn<Arg, Output> {
-    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-        (*self).dyn_body(&recur, arg)
-    }
-
-    fn call(&self, arg: Arg) -> Output {
-        self.dyn_body(&|arg| self.call(arg), arg)
-    }
-}
+dyn_recur_fn_impl_with_marker! {}
+dyn_recur_fn_impl_with_marker! {Send}
+dyn_recur_fn_impl_with_marker! {Sync}
+dyn_recur_fn_impl_with_marker! {Send, Sync}
 
 /*
 /// The recursive function trait that might mutate the states.
@@ -324,28 +345,37 @@ mod tests {
 
     use core::ops::Deref;
 
-    #[test]
-    fn test_tmp() {
-        let dyn_fact: &DynRecurFn<_, _> =
-            &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
+    macro_rules! dyn_works_with_marker {
+        ( $test_name:ident, $( $marker:tt),* ) => {
+            #[test]
+            fn $test_name() {
+                let dyn_fact: &(DynRecurFn<_, _>$( + $marker)*) =
+                    &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
 
-        assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
-        assert_eq!(3, dyn_fact.body(&|_| 1, 3));
-        // `&dyn DynRecurFn` implements `RecurFn`.
-        fn test_fact_impl(fact: impl RecurFn<u64, u64>) {
-            assert_eq!(6, fact.call(3));
-            assert_eq!(0, fact.body(|_| 0, 3));
-        }
-        test_fact_impl(dyn_fact);
+                assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
+                assert_eq!(3, dyn_fact.body(&|_| 1, 3));
+                // `&dyn DynRecurFn` implements `RecurFn`.
+                fn test_fact_impl(fact: impl RecurFn<u64, u64>) {
+                    assert_eq!(6, fact.call(3));
+                    assert_eq!(0, fact.body(|_| 0, 3));
+                }
+                test_fact_impl(dyn_fact);
 
-        // `dyn DynRecurFn` implements `RecurFn`.
-        fn test_fact_deref<D: Deref>(fact: D)
-        where
-            D::Target: RecurFn<u64, u64>,
-        {
-            assert_eq!(6, fact.call(3));
-            assert_eq!(0, fact.body(|_| 0, 3));
-        }
-        test_fact_deref(dyn_fact);
+                // `dyn DynRecurFn` implements `RecurFn`.
+                fn test_fact_deref<D: Deref>(fact: D)
+                where
+                    D::Target: RecurFn<u64, u64>,
+                {
+                    assert_eq!(6, fact.call(3));
+                    assert_eq!(0, fact.body(|_| 0, 3));
+                }
+                test_fact_deref(dyn_fact);
+            }
+        };
     }
+
+    dyn_works_with_marker! {dyn_works,}
+    dyn_works_with_marker! {dyn_works_send, Send}
+    dyn_works_with_marker! {dyn_works_sync, Sync}
+    dyn_works_with_marker! {dyn_works_send_sync, Send, Sync}
 }
