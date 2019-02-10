@@ -153,6 +153,17 @@ impl<Arg, Output, R: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for R {
     }
 }
 
+/// `dyn DynRecurFn` implement `RecurFn`.
+impl<Arg, Output> RecurFn<Arg, Output> for dyn DynRecurFn<Arg, Output> {
+    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        self.dyn_body(&recur, arg)
+    }
+
+    fn call(&self, arg: Arg) -> Output {
+        self.dyn_body(&|arg| self.call(arg), arg)
+    }
+}
+
 /// `&dyn DynRecurFn` implement `RecurFn`.
 impl<Arg, Output> RecurFn<Arg, Output> for &dyn DynRecurFn<Arg, Output> {
     fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
@@ -309,5 +320,31 @@ mod tests {
         });
         assert_eq!(6, fact.call(3));
         assert_eq!(3, fact.body(|_| 1, 3));
+    }
+
+    use core::ops::Deref;
+
+    #[test]
+    fn test_tmp() {
+        let dyn_fact: &DynRecurFn<_, _> = &recur_fn(|fact, n: u64| {
+            if n == 0 { 1 } else { n * fact(n - 1) }
+        });
+
+        assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
+        assert_eq!(3, dyn_fact.body(&|_| 1, 3));
+        // `&dyn DynRecurFn` implements `RecurFn`.
+        fn test_fact_impl(fact: impl RecurFn<u64, u64>) {
+            assert_eq!(6, fact.call(3));
+            assert_eq!(0, fact.body(|_| 0, 3));
+        }
+        test_fact_impl(dyn_fact);
+
+        // `dyn DynRecurFn` implements `RecurFn`.
+        fn test_fact_deref<D: Deref>(fact: D)
+        where D::Target: RecurFn<u64, u64> {
+            assert_eq!(6, fact.call(3));
+            assert_eq!(0, fact.body(|_| 0, 3));
+        }
+        test_fact_deref(dyn_fact);
     }
 }
