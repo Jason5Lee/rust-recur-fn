@@ -326,9 +326,8 @@ mod tests {
 
     #[test]
     fn test_tmp() {
-        let dyn_fact: &DynRecurFn<_, _> = &recur_fn(|fact, n: u64| {
-            if n == 0 { 1 } else { n * fact(n - 1) }
-        });
+        let dyn_fact: &DynRecurFn<_, _> =
+            &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
 
         assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
         assert_eq!(3, dyn_fact.body(&|_| 1, 3));
@@ -341,7 +340,9 @@ mod tests {
 
         // `dyn DynRecurFn` implements `RecurFn`.
         fn test_fact_deref<D: Deref>(fact: D)
-        where D::Target: RecurFn<u64, u64> {
+        where
+            D::Target: RecurFn<u64, u64>,
+        {
             assert_eq!(6, fact.call(3));
             assert_eq!(0, fact.body(|_| 0, 3));
         }
