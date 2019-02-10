@@ -91,6 +91,7 @@
 //!
 //! ```
 //! use recur_fn::{recur_fn, RecurFn, DynRecurFn};
+//!
 //! let dyn_fact: &DynRecurFn<_, _> = &recur_fn(|fact, n: u64| {
 //!     if n == 0 { 1 } else { n * fact(n - 1) }
 //! });
