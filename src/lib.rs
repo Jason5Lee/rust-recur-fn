@@ -59,7 +59,7 @@
 //!         // otherwise, calling it would not be faster than using `recur_fn`,
 //!         // which is against the purpose of implementing `RecurFn` manually.
 //!         #[inline]
-//!         fn body<F: Fn(u64) -> u64>(&self, fib: F, n: u64) -> u64 {
+//!         fn body(&self, fib: impl Fn(u64) -> u64, n: u64) -> u64 {
 //!             if n <= 1 {
 //!                 n
 //!             } else {
@@ -87,19 +87,22 @@
 //!     fact.body(|_| 0, 3));
 //! ```
 //!
-//! `DynRecurFn` is a dynamic version that allows to have atrait object.
+//! `DynRecurFn` is a dynamic version that allows to have a trait object.
 //!
 //! ```
-//! use recur_fn::{RecurFn, DynRecurFn, recur_fn};
-//!
-//! let fact: &DynRecurFn<_, _> = &recur_fn(|fact, n: u64| {
+//! use recur_fn::{recur_fn, RecurFn, DynRecurFn};
+//! let dyn_fact: &DynRecurFn<_, _> = &recur_fn(|fact, n: u64| {
 //!     if n == 0 { 1 } else { n * fact(n - 1) }
 //! });
+//! assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
+//! assert_eq!(3, dyn_fact.body(&|_| 1, 3));
 //!
-//! assert_eq!(0, fact.body_dyn(&|_| 0, 3));
-//! // `dyn DynRecurFn` implements `RecurFn`.
-//! assert_eq!(6, fact.call(3));
-//! assert_eq!(0, fact.body(|_| 0, 3));
+//! // `&dyn DynRecurFn` implements `RecurFn`.
+//! fn test_fact(fact: impl RecurFn<u64, u64>) {
+//!     assert_eq!(6, fact.call(3));
+//!     assert_eq!(0, fact.body(|_| 0, 3));
+//! }
+//! test_fact(dyn_fact);
 //! ```
 
 #![no_std]
@@ -118,7 +121,7 @@ pub trait RecurFn<Arg, Output> {
     ///
     /// Performance tip: mark this method `#[inline]` to make the
     /// `call` method as fast as recurring directly.
-    fn body<Recur: Fn(Arg) -> Output>(&self, recur: Recur, arg: Arg) -> Output;
+    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output;
 
     /// Calls the recursive function.
     #[inline]
@@ -127,33 +130,42 @@ pub trait RecurFn<Arg, Output> {
     }
 }
 
-/// The dynamic version of `RecurFn` that allows you
-/// to turn a `RecurFn` value into the trait object.
-pub trait DynRecurFn<Arg, Output> {
-    /// The body of the recursive function.
-    fn body_dyn(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
+/// `Fn(Arg) -> Output`s implement `RecurFn<Arg, Output>`.
+/// It calls the function directly, without calling `recur` parameter.
+impl<Arg, Output, F: Fn(Arg) -> Output> RecurFn<Arg, Output> for F {
+    fn body(&self, _recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        self(arg)
+    }
 }
 
-/// `RecurFn`s are `DynRecurFn`.
-impl<Arg, Output, RF: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for RF {
-    fn body_dyn(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
+/// The more dynamic `RecurFn` trait that supports trait object.
+pub trait DynRecurFn<Arg, Output> {
+    /// The body of the recursive function.
+    fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
+}
+
+/// `RecurFn`s implement `DynRecurFn`, so that you can turns a
+/// `RecurFn` value into an `DynRecurFn` object.
+impl<Arg, Output, R: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for R {
+    fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
         self.body(recur, arg)
     }
 }
 
-/// `DynRecurFn`s are `RecurFn`.
-/// To avoid conflict, only `dyn DynRecurFn` implments,
-/// as the main purpose to use `DynRecurFn` is to turn
-/// `RecurFn` into a trait object.
-impl<Arg, Output> RecurFn<Arg, Output> for dyn DynRecurFn<Arg, Output> {
-    fn body<Recur: Fn(Arg) -> Output>(&self, recur: Recur, arg: Arg) -> Output {
-        self.body_dyn(&recur, arg)
+/// `&dyn DynRecurFn` implement `RecurFn`.
+impl<Arg, Output> RecurFn<Arg, Output> for &dyn DynRecurFn<Arg, Output> {
+    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        (*self).dyn_body(&recur, arg)
+    }
+
+    fn call(&self, arg: Arg) -> Output {
+        self.dyn_body(&|arg| self.call(arg), arg)
     }
 }
 
 /*
 /// The recursive function trait that might mutate the states.
-/// It's same as the `RecurFn` trait, except it accept `&mut self` and `FnMut`.
+/// It's similar to `RecurFn`, except it accept `&mut self` and `FnMut`.
 /// Currently there's a borrow check error that I can't resolve.
 pub trait RecurFnMut<Arg, Output> {
     /// The body of the recursive function.
@@ -166,14 +178,6 @@ pub trait RecurFnMut<Arg, Output> {
         self.body(|arg| self.call(arg), arg) // Borrow check error here.
     }
 }*/
-
-/// Implements `RecurFn<Arg, Output>` for `Fn(Arg) -> Output`.
-/// It calls the function directly, without calling `recur` parameter.
-impl<Arg, Output, F: Fn(Arg) -> Output> RecurFn<Arg, Output> for F {
-    fn body<Recur: Fn(Arg) -> Output>(&self, _recur: Recur, arg: Arg) -> Output {
-        self(arg)
-    }
-}
 
 /// Constructs a `RecurFn` by providing a closure as body.
 /// This is the most convenient to construct an anonymous `RecurFn`.
@@ -203,7 +207,7 @@ where
     where
         F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
     {
-        fn body<Recur: Fn(Arg) -> Output>(&self, recur: Recur, arg: Arg) -> Output {
+        fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
             (self.0)(&recur, arg)
         }
 
@@ -243,9 +247,9 @@ macro_rules! as_recur_fn {
 
         impl RecurFn<$arg_type, $output_type> for RecurFnImpl {
             #[inline]
-            fn body<Recur: Fn($arg_type) -> $output_type>(
+            fn body(
                 &self,
-                $fn_name: Recur,
+                $fn_name: impl Fn($arg_type) -> $output_type,
                 $arg_name: $arg_type,
             ) -> $output_type {
                 $body
@@ -263,7 +267,7 @@ mod tests {
         let fact = {
             struct Fact {}
             impl RecurFn<u64, u64> for Fact {
-                fn body<F: Fn(u64) -> u64>(&self, recur: F, arg: u64) -> u64 {
+                fn body(&self, recur: impl Fn(u64) -> u64, arg: u64) -> u64 {
                     if arg == 0 {
                         1
                     } else {
@@ -303,6 +307,6 @@ mod tests {
             if n == 0 { 1 } else { n * fact(n - 1) }
         });
         assert_eq!(6, fact.call(3));
-        assert_eq!(0, fact.body(|_| 0, 3));
+        assert_eq!(3, fact.body(|_| 1, 3));
     }
 }

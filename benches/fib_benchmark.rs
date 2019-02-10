@@ -16,7 +16,7 @@ fn fib_direct(n: u64) -> u64 {
 struct Fib {}
 
 impl RecurFn<u64, u64> for Fib {
-    fn body<F: Fn(u64) -> u64>(&self, fib: F, n: u64) -> u64 {
+    fn body(&self, fib: impl Fn(u64) -> u64, n: u64) -> u64 {
         if n <= 1 {
             n
         } else {
@@ -29,7 +29,7 @@ struct FibInline {}
 
 impl RecurFn<u64, u64> for FibInline {
     #[inline]
-    fn body<F: Fn(u64) -> u64>(&self, fib: F, n: u64) -> u64 {
+    fn body(&self, fib: impl Fn(u64) -> u64, n: u64) -> u64 {
         if n <= 1 {
             n
         } else {
