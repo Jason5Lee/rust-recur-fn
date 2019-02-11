@@ -196,6 +196,36 @@ dyn_recur_fn_impl_with_marker! {Send}
 dyn_recur_fn_impl_with_marker! {Sync}
 dyn_recur_fn_impl_with_marker! {Send, Sync}
 
+use core::ops;
+
+/// Wraps a pointer that `Deref` to `RecurFn` to make it implement `RecurFn`.
+///
+/// ```
+/// use recur_fn::{RecurFn, recur_fn, deref};
+///
+/// let fact = recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
+/// let fact = deref(&fact);
+/// assert_eq!(6, fact.call(3));
+/// assert_eq!(3, fact.body(|_| 1, 3));
+/// ```
+pub fn deref<Arg, Output, D: ops::Deref>(d: D) -> impl RecurFn<Arg, Output>
+where
+    D::Target: RecurFn<Arg, Output>,
+{
+    struct RecurFnImpl<D>(D);
+    impl<Arg, Output, D: ops::Deref> RecurFn<Arg, Output> for RecurFnImpl<D>
+    where
+        D::Target: RecurFn<Arg, Output>,
+    {
+        #[inline]
+        fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+            self.0.body(recur, arg)
+        }
+    }
+
+    RecurFnImpl(d)
+}
+
 /*
 /// The recursive function trait that might mutate the states.
 /// It's similar to `RecurFn`, except it accept `&mut self` and `FnMut`.
