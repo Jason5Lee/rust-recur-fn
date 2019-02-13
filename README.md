@@ -4,7 +4,7 @@
 
 A Rust library that provides you a more flexible way to construct and extend the recursive function.
 
-For more information detail, see [API reference](https://docs.rs/recur-fn).
+Documentation: [API reference](https://docs.rs/recur-fn).
 
 ## Usage
 
@@ -12,5 +12,5 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-recur-fn = "1.1.0"
+recur-fn = "1.2.0"
 ```

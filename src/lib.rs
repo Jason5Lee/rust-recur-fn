@@ -98,18 +98,9 @@
 //
 //! assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
 //! assert_eq!(3, dyn_fact.body(&|_| 1, 3));
-//! // `&dyn DynRecurFn` implements `RecurFn`.
-//! fn test_fact_impl(fact: impl RecurFn<u64, u64>) {
-//!     assert_eq!(6, fact.call(3));
-//!     assert_eq!(0, fact.body(|_| 0, 3));
-//! }
-//! test_fact_impl(dyn_fact);
 //!
-//! // `dyn DynRecurFn` implements `RecurFn`.
-//! fn test_fact_deref<D: Deref>(fact: D)
-//! where
-//!     D::Target: RecurFn<u64, u64>,
-//! {
+//! // Any type that derefs to `DynRecurFn` implements `RecurFn`.
+//! fn test_fact_deref(fact: impl RecurFn<u64, u64>) {
 //!     assert_eq!(6, fact.call(3));
 //!     assert_eq!(0, fact.body(|_| 0, 3));
 //! }
@@ -117,6 +108,7 @@
 //! ```
 
 #![no_std]
+use core::ops::Deref;
 
 /// The recursive function trait.
 ///
@@ -141,89 +133,25 @@ pub trait RecurFn<Arg, Output> {
     }
 }
 
-/// `Fn(Arg) -> Output`s implement `RecurFn<Arg, Output>`.
-/// It calls the function directly, without calling `recur` parameter.
-impl<Arg, Output, F: Fn(Arg) -> Output> RecurFn<Arg, Output> for F {
-    fn body(&self, _recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-        self(arg)
-    }
-}
-
 /// The dynamic version of `RecurFn` that supports trait object.
 pub trait DynRecurFn<Arg, Output> {
     /// The body of the recursive function.
     fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
 }
 
-/// `RecurFn`s implement `DynRecurFn`, so that you can turns a
-/// `RecurFn` value into an `DynRecurFn` object.
 impl<Arg, Output, R: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for R {
     fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
         self.body(recur, arg)
     }
 }
 
-/// It's awful that a trait with markers no longer implements the traits
-/// it originally implements.
-macro_rules! dyn_recur_fn_impl_with_marker {
-    ( $( $marker:tt ),* ) => {
-        /// `dyn DynRecurFn` implement `RecurFn`.
-        impl<Arg, Output> RecurFn<Arg, Output> for dyn DynRecurFn<Arg, Output> $( + $marker)* {
-            fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-                self.dyn_body(&recur, arg)
-            }
-
-            fn call(&self, arg: Arg) -> Output {
-                self.dyn_body(&|arg| self.call(arg), arg)
-            }
-        }
-
-        /// `&dyn DynRecurFn` implement `RecurFn`.
-        impl<Arg, Output> RecurFn<Arg, Output> for &(dyn DynRecurFn<Arg, Output> $( + $marker)*) {
-            fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-                (*self).dyn_body(&recur, arg)
-            }
-
-            fn call(&self, arg: Arg) -> Output {
-                (*self).dyn_body(&|arg| self.call(arg), arg)
-            }
-        }
-    };
-}
-
-dyn_recur_fn_impl_with_marker! {}
-dyn_recur_fn_impl_with_marker! {Send}
-dyn_recur_fn_impl_with_marker! {Sync}
-dyn_recur_fn_impl_with_marker! {Send, Sync}
-
-use core::ops;
-
-/// Wraps a pointer that `Deref` to `RecurFn` to make it implement `RecurFn`.
-///
-/// ```
-/// use recur_fn::{RecurFn, recur_fn, deref};
-///
-/// let fact = recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
-/// let fact = deref(&fact);
-/// assert_eq!(6, fact.call(3));
-/// assert_eq!(3, fact.body(|_| 1, 3));
-/// ```
-pub fn deref<Arg, Output, D: ops::Deref>(d: D) -> impl RecurFn<Arg, Output>
+impl<Arg, Output, D: Deref> RecurFn<Arg, Output> for D
 where
-    D::Target: RecurFn<Arg, Output>,
+    D::Target: DynRecurFn<Arg, Output>,
 {
-    struct RecurFnImpl<D>(D);
-    impl<Arg, Output, D: ops::Deref> RecurFn<Arg, Output> for RecurFnImpl<D>
-    where
-        D::Target: RecurFn<Arg, Output>,
-    {
-        #[inline]
-        fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-            self.0.body(recur, arg)
-        }
+    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        self.deref().dyn_body(&recur, arg)
     }
-
-    RecurFnImpl(d)
 }
 
 /*
@@ -241,6 +169,37 @@ pub trait RecurFnMut<Arg, Output> {
         self.body(|arg| self.call(arg), arg) // Borrow check error here.
     }
 }*/
+
+/// Constructs a non-recursive `RecurFn` calling `f` directly.
+///
+/// # Examples
+///
+/// ```
+/// use recur_fn::{RecurFn, direct};
+///
+/// let double = direct(|n: u64| n * 2);
+/// assert_eq!(4, double.call(2));
+/// assert_eq!(20, double.body(|_| 0, 10));
+/// ```
+pub fn direct<Arg, Output, F: Fn(Arg) -> Output>(f: F) -> impl RecurFn<Arg, Output> {
+    struct RecurFnImpl<F>(F);
+
+    impl<Arg, Output, F> RecurFn<Arg, Output> for RecurFnImpl<F>
+    where
+        F: Fn(Arg) -> Output,
+    {
+        #[inline]
+        fn body(&self, _: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+            (self.0)(arg)
+        }
+
+        fn call(&self, arg: Arg) -> Output {
+            (self.0)(arg)
+        }
+    }
+
+    RecurFnImpl(f)
+}
 
 /// Constructs a `RecurFn` by providing a closure as body.
 /// This is the most convenient to construct an anonymous `RecurFn`.
@@ -321,9 +280,12 @@ macro_rules! as_recur_fn {
         RecurFnImpl {}
     }};
 }
+
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use crate::*;
+    use std::boxed::Box;
 
     #[test]
     fn fact_works() {
@@ -344,28 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn fn_works() {
-        let mul2 = |n: u64| n * 2;
-        assert_eq!(14, RecurFn::call(&mul2, 7));
-        assert_eq!(
-            14,
-            mul2.body(|_| panic!("Fn implementation should not recur."), 7)
-        );
-    }
-
-    #[test]
     fn as_recur_fn_works() {
-        fn fact_direct(n: u64) -> u64 {
-            if n == 0 {
-                1
-            } else {
-                n * fact_direct(n - 1)
-            }
-        }
-        assert_eq!(
-            6,
-            RecurFn::body(&fact_direct, |_| panic!("This would not be executed"), 3)
-        );
         let fact = as_recur_fn!(fact(n: u64) -> u64 {
             if n == 0 { 1 } else { n * fact(n - 1) }
         });
@@ -373,39 +314,19 @@ mod tests {
         assert_eq!(3, fact.body(|_| 1, 3));
     }
 
-    use core::ops::Deref;
+    #[test]
+    fn dyn_works() {
+        let dyn_fib: Box<DynRecurFn<_, _> + Send + Sync> =
+            Box::new(recur_fn(
+                |fact, n: usize| {
+                    if n <= 1 {
+                        n
+                    } else {
+                        n * fact(n - 1)
+                    }
+                },
+            ));
 
-    macro_rules! dyn_works_with_marker {
-        ( $test_name:ident, $( $marker:tt),* ) => {
-            #[test]
-            fn $test_name() {
-                let dyn_fact: &(DynRecurFn<_, _>$( + $marker)*) =
-                    &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
-
-                assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
-                assert_eq!(3, dyn_fact.body(&|_| 1, 3));
-                // `&dyn DynRecurFn` implements `RecurFn`.
-                fn test_fact_impl(fact: impl RecurFn<u64, u64>) {
-                    assert_eq!(6, fact.call(3));
-                    assert_eq!(0, fact.body(|_| 0, 3));
-                }
-                test_fact_impl(dyn_fact);
-
-                // `dyn DynRecurFn` implements `RecurFn`.
-                fn test_fact_deref<D: Deref>(fact: D)
-                where
-                    D::Target: RecurFn<u64, u64>,
-                {
-                    assert_eq!(6, fact.call(3));
-                    assert_eq!(0, fact.body(|_| 0, 3));
-                }
-                test_fact_deref(dyn_fact);
-            }
-        };
+        dyn_fib.call(0);
     }
-
-    dyn_works_with_marker! {dyn_works,}
-    dyn_works_with_marker! {dyn_works_send, Send}
-    dyn_works_with_marker! {dyn_works_sync, Sync}
-    dyn_works_with_marker! {dyn_works_send_sync, Send, Sync}
 }
