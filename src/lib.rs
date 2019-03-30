@@ -1,10 +1,10 @@
-//! A library that provides you a more flexible way to construct
+//! A library that provides a more flexible way to construct
 //! and extend the recursive function.
 //!
-//! The `RecurFn` trait provides a recursive function abstraction
-//! that the recursion can be customized.
-//!
-//! It means that you can construct anonymous recursive function,
+//! The `RecurFn` trait is an abstraction of a recursive function.
+//! By accepting a function parameter `recur` as the recursion
+//! rather than recurring directly, it makes constructing an
+//! anonymous recursive function possible.
 //!
 //! ```
 //! use recur_fn::{recur_fn, RecurFn};
@@ -20,7 +20,7 @@
 //! assert_eq!(55, fib.call(10));
 //! ```
 //!
-//! and you can extends the body of the recursive function.
+//! Beside, it makes extending the body of a recursive function possible.
 //!
 //! ```
 //! use recur_fn::{recur_fn, RecurFn};
@@ -45,9 +45,10 @@
 //! assert_eq!(*log.borrow(), vec![3, 2, 1, 0, 1]);
 //! ```
 //!
-//! As `recur_fn` is a convenient way to construct `RecurFn`,
-//! it comes with cost. You can define a struct and
-//! implement `RecurFn` trait to make it zero-cost,
+//! As `recur_fn` is a convenient way to construct a `RecurFn`,
+//! calling it will be slightly slower than direct recursion.
+//! To make it zero-cost, consider defining a struct,
+//! implementing `RecurFn` trait for it and mark the `body` method by `#[inline]`.
 //!
 //! ```
 //! use recur_fn::RecurFn;
@@ -55,9 +56,6 @@
 //! let fib = {
 //!     struct Fib {}
 //!     impl RecurFn<u64, u64> for Fib {
-//!         // It's highly recommended to mark `body` method as `#[inline]`,
-//!         // otherwise, calling it would not be faster than using `recur_fn`,
-//!         // which is against the purpose of implementing `RecurFn` manually.
 //!         #[inline]
 //!         fn body(&self, fib: impl Fn(u64) -> u64, n: u64) -> u64 {
 //!             if n <= 1 {
@@ -73,7 +71,7 @@
 //! assert_eq!(55, fib.call(10));
 //! ```
 //!
-//! or if the function doesn't need to capture anything,
+//! or if the function doesn't capture anything,
 //! you can use `as_recur_fn` macro.
 //!
 //! ```
@@ -87,7 +85,8 @@
 //!     fact.body(|_| 0, 3));
 //! ```
 //!
-//! `DynRecurFn` is a dynamic version that allows you to have a trait object.
+//! `DynRecurFn` is a dynamic version of `RecurFn`
+//! that allows you to have a trait object.
 //!
 //! ```
 //! use recur_fn::{recur_fn, RecurFn, DynRecurFn};
@@ -95,9 +94,6 @@
 //!
 //! let dyn_fact: &DynRecurFn<_, _> =
 //!     &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
-//
-//! assert_eq!(3, dyn_fact.dyn_body(&|_| 1, 3));
-//! assert_eq!(3, dyn_fact.body(&|_| 1, 3));
 //!
 //! // Any type that derefs to `DynRecurFn` implements `RecurFn`.
 //! fn test_fact_deref(fact: impl RecurFn<u64, u64>) {
@@ -113,17 +109,16 @@ use core::ops::Deref;
 /// The recursive function trait.
 ///
 /// Instead of recurring directly,
-/// this trait allows user to customize the recursion
-/// by accepting `Fn`-type parameter.
-/// In this way, we can extract and extend the body of the recursive function.
+/// this trait allows user to customize the recursion.
+/// In this way, we can extract and extend the body of a recursive function.
 ///
-/// This trait only supports one argument.
+/// This trait supports only one argument.
 /// If you need multiple arguments, use tuple.
 pub trait RecurFn<Arg, Output> {
     /// The body of the recursive function.
     ///
-    /// Performance tip: mark this method `#[inline]` to make the
-    /// `call` method as fast as recurring directly.
+    /// Marking this method by `#[inline]` will make the `call` method
+    /// as fast as recurring directly.
     fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output;
 
     /// Calls the recursive function.
@@ -201,8 +196,7 @@ pub fn direct<Arg, Output, F: Fn(Arg) -> Output>(f: F) -> impl RecurFn<Arg, Outp
     RecurFnImpl(f)
 }
 
-/// Constructs a `RecurFn` by providing a closure as body.
-/// This is the most convenient to construct an anonymous `RecurFn`.
+/// Constructs a `RecurFn` with the body speicified.
 ///
 /// ## Examples
 ///
@@ -241,14 +235,12 @@ where
     RecurFnImpl(body)
 }
 
-/// Constructs a zero-cost `RecurFn` implementation that doesn't capture.
+/// Expands a function definition to defining a struct,
+/// implementing `RecurFn` for the struct and constructing it.
+/// It can be useful if you want a zero-cost `RecurFn` implementation.
 ///
 /// You can consider it as a function definition,
 /// except `fn` keyword is replaced by this macro.
-///
-/// So it's recommended to first write function definition and then
-/// change it into this macro, so that the IDE's features can work while
-/// you're coding the function's body.
 ///
 /// ## Examples
 ///
