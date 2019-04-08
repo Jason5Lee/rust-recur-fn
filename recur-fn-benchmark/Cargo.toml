@@ -1,0 +1,19 @@
+[package]
+name = "recur-fn-benchmark"
+version = "1.2.0"
+authors = ["Jason Lee <jason5lee@hotmail.com>"]
+description = "A sub-crate for benchmarking."
+edition = "2018"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Jason5Lee/rust-recur-fn"
+homepage = "https://crates.io/crates/recur-fn"
+
+[dependencies]
+recur-fn = { path = ".." }
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "fib_benchmark"
+harness = false

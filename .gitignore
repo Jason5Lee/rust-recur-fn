@@ -2,4 +2,4 @@
 **/*.rs.bk
 Cargo.lock
 .idea
-recur-fn.iml
+recur-fn-benchmark/target
