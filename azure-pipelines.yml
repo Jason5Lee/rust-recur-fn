@@ -28,7 +28,5 @@ jobs:
           rustc -Vv
           cargo -V
       displayName: Query rust and cargo versions
-    - script: _build/cargo-make.sh "0.16.8" "x86_64-unknown-linux-musl"
-      displayName: Install cargo-make binary
-    - script: cargo make ci-flow
-      displayName: CI flow
+    - script: cargo test --verbose --all-features
+      displayName: Run tests
