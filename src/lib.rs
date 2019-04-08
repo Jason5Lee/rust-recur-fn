@@ -89,11 +89,11 @@
 //! that allows you to have a trait object.
 //!
 //! ```
-//! use recur_fn::{recur_fn, RecurFn, DynRecurFn};
+//! use recur_fn::{recur_fn, to_dyn, RecurFn, DynRecurFn};
 //! use core::ops::Deref;
 //!
 //! let dyn_fact: &DynRecurFn<_, _> =
-//!     &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
+//!     &to_dyn(recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) }));
 //!
 //! // Any type that derefs to `DynRecurFn` implements `RecurFn`.
 //! fn test_fact_deref(fact: impl RecurFn<u64, u64>) {
@@ -134,10 +134,21 @@ pub trait DynRecurFn<Arg, Output> {
     fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
 }
 
-impl<Arg, Output, R: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for R {
-    fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
-        self.body(recur, arg)
+/// Convert into a `DynRecurFn`
+pub fn to_dyn<Arg, Output, R: RecurFn<Arg, Output>>(r: R) -> impl DynRecurFn<Arg, Output> {
+    struct DynRecurFnImpl<R>(R);
+
+    impl<Arg, Output, R> DynRecurFn<Arg, Output> for DynRecurFnImpl<R>
+    where
+        R: RecurFn<Arg, Output>,
+    {
+        #[inline]
+        fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
+            self.0.body(recur, arg)
+        }
     }
+
+    DynRecurFnImpl(r)
 }
 
 impl<Arg, Output, D: Deref> RecurFn<Arg, Output> for D
