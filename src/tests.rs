@@ -46,6 +46,7 @@ fn dyn_works() {
 }
 
 /// A `RecurFn` implementation returns whether `recur` is a dynamic function object.
+#[derive(Clone, Copy)]
 struct IsDyn;
 impl RecurFn<(), bool> for IsDyn {
     fn body(&self, recur: impl Fn(()) -> bool, _: ()) -> bool {
@@ -53,17 +54,19 @@ impl RecurFn<(), bool> for IsDyn {
     }
 }
 
+static IS_DYN: IsDyn = IsDyn {};
+
 #[test]
 fn test_is_dyn() {
     assert_eq!(core::mem::size_of_val(&|arg| IsDyn {}.call(arg)), 0);
-    assert!(!IsDyn {}.call(()));
-    assert!(!(&IsDyn {}).call(()));
-    assert!((&to_dyn(IsDyn {}) as &DynRecurFn<_, bool>).call(()))
+    assert!(!IS_DYN.call(()));
+    assert!(!(&IS_DYN).call(()));
+    assert!((&to_dyn(IS_DYN) as &DynRecurFn<_, bool>).call(()))
 }
 
 #[test]
 fn test_issue_1() {
-    let box_recur_fn = Box::new(IsDyn {});
+    let box_recur_fn = Box::new(IS_DYN);
     assert!(
         !box_recur_fn.call(()),
         "Calling a `Box` of a concrete `RecurFn` implementation should not go dynamic."

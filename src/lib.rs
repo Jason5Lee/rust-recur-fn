@@ -268,9 +268,10 @@ where
 #[macro_export]
 macro_rules! as_recur_fn {
     ($fn_name:ident ($arg_name:ident: $arg_type:ty) -> $output_type:ty $body:block) => {{
-        struct RecurFnImpl {}
+        #[allow(non_camel_case_types)]
+        struct $fn_name {}
 
-        impl RecurFn<$arg_type, $output_type> for RecurFnImpl {
+        impl RecurFn<$arg_type, $output_type> for $fn_name {
             #[inline]
             fn body(
                 &self,
@@ -280,7 +281,7 @@ macro_rules! as_recur_fn {
                 $body
             }
         }
-        RecurFnImpl {}
+        $fn_name {}
     }};
 }
 
