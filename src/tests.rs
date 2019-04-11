@@ -32,43 +32,12 @@ fn as_recur_fn_works() {
 
 #[test]
 fn dyn_works() {
-    let dyn_fib: Box<DynRecurFn<_, _> + Send + Sync> = Box::new(to_dyn(recur_fn(
-        |fact, n: usize| {
-            if n <= 1 {
-                n
-            } else {
-                n * fact(n - 1)
-            }
-        },
-    )));
-
-    dyn_fib.call(0);
-}
-
-/// A `RecurFn` implementation returns whether `recur` is a dynamic function object.
-#[derive(Clone, Copy)]
-struct IsDyn;
-impl RecurFn<(), bool> for IsDyn {
-    fn body(&self, recur: impl Fn(()) -> bool, _: ()) -> bool {
-        core::mem::size_of_val(&recur) != 8
-    }
-}
-
-static IS_DYN: IsDyn = IsDyn {};
-
-#[test]
-fn test_is_dyn() {
-    assert_eq!(core::mem::size_of_val(&|arg| IsDyn {}.call(arg)), 0);
-    assert!(!IS_DYN.call(()));
-    assert!(!(&IS_DYN).call(()));
-    assert!((&to_dyn(IS_DYN) as &DynRecurFn<_, bool>).call(()))
-}
-
-#[test]
-fn test_issue_1() {
-    let box_recur_fn = Box::new(IS_DYN);
-    assert!(
-        !box_recur_fn.call(()),
-        "Calling a `Box` of a concrete `RecurFn` implementation should not go dynamic."
-    )
+    let fact = recur_fn(|fact, n: usize| if n <= 1 { 1 } else { n * fact(n - 1) });
+    let dyn_fact: &DynRecurFn<_, _> = &fact;
+    assert_eq!(dyn_fact.call(5), 120);
+    assert_eq!(fact.call(5), 120);
+    let dyn_fact: Box<DynRecurFn<_, _> + Send + Sync> = Box::new(fact);
+    assert_eq!(dyn_fact.call(5), 120);
+    let from_dyn: PointerRecurFn<_> = from_pointer(dyn_fact);
+    assert_eq!(from_dyn.call(5), 120);
 }
