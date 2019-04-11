@@ -22,15 +22,6 @@ fn fact_works() {
 }
 
 #[test]
-fn as_recur_fn_works() {
-    let fact = as_recur_fn!(fact(n: u64) -> u64 {
-        if n == 0 { 1 } else { n * fact(n - 1) }
-    });
-    assert_eq!(6, fact.call(3));
-    assert_eq!(3, fact.body(|_| 1, 3));
-}
-
-#[test]
 fn dyn_works() {
     let fact = recur_fn(|fact, n: usize| if n <= 1 { 1 } else { n * fact(n - 1) });
     let dyn_fact: &DynRecurFn<_, _> = &fact;
@@ -38,6 +29,6 @@ fn dyn_works() {
     assert_eq!(fact.call(5), 120);
     let dyn_fact: Box<DynRecurFn<_, _> + Send + Sync> = Box::new(fact);
     assert_eq!(dyn_fact.call(5), 120);
-    let from_dyn: PointerRecurFn<_> = from_pointer(dyn_fact);
+    let from_dyn = from_pointer(dyn_fact);
     assert_eq!(from_dyn.call(5), 120);
 }

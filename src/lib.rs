@@ -127,8 +127,9 @@ pub trait DynRecurFn<Arg, Output> {
     fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
 }
 
-impl <Arg, Output, R> DynRecurFn<Arg, Output> for R 
-where R: RecurFn<Arg, Output>
+impl<Arg, Output, R> DynRecurFn<Arg, Output> for R
+where
+    R: RecurFn<Arg, Output>,
 {
     fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
         self.body(&recur, arg)
@@ -150,39 +151,10 @@ impl_dyn_with_markers! {Send}
 impl_dyn_with_markers! {Sync}
 impl_dyn_with_markers! {Send, Sync}
 
-/*
-/// The recursive function trait that might mutate some states.
-/// It's similar to `RecurFn`, except it accept `&mut self` and `FnMut`.
-/// Currently there's a borrow check error that I can't resolve.
-pub trait RecurFnMut<Arg, Output> {
-    /// The body of the recursive function.
-    fn body<Recur: FnMut(Arg) -> Output>
-    (&mut self, recur: Recur, arg: Arg) -> Output;
-
-    /// Call the recursive function.
-    #[inline]
-    fn call(&mut self, arg: Arg) -> Output {
-        self.body(|arg| self.call(arg), arg) // Borrow check error here.
-    }
-}*/
-
-/// Pointer to `RecurFn` Wrapper.
-pub struct PointerRecurFn<D>(D);
-impl<Arg, Output, D> RecurFn<Arg, Output> for PointerRecurFn<D>
-where
-    D: Deref,
-    D::Target: RecurFn<Arg, Output>,
-{
-    #[inline]
-    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-        self.0.body(recur, arg)
-    }
-}
-
 /// Returns a `RecurFn` implementation from a pointer
 /// to `RecurFn` (i.e. a implementation of `Deref` whose `Target`
 /// implements `RecurFn`).
-/// 
+///
 /// # Examples
 ///
 /// ```
@@ -202,11 +174,22 @@ where
 /// ));
 /// test_fact(from_pointer(box_fact));
 /// ```
-pub fn from_pointer<Arg, Output, D>(d: D) -> PointerRecurFn<D>
+pub fn from_pointer<Arg, Output, D>(d: D) -> impl RecurFn<Arg, Output>
 where
     D: Deref,
     D::Target: RecurFn<Arg, Output>,
 {
+    struct PointerRecurFn<D>(D);
+    impl<Arg, Output, D> RecurFn<Arg, Output> for PointerRecurFn<D>
+    where
+        D: Deref,
+        D::Target: RecurFn<Arg, Output>,
+    {
+        #[inline]
+        fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+            self.0.body(recur, arg)
+        }
+    }
     PointerRecurFn(d)
 }
 
@@ -321,47 +304,3 @@ macro_rules! as_recur_fn {
 
 #[cfg(test)]
 mod tests;
-/*
-mod tests {
-    extern crate std;
-    use crate::*;
-    use std::boxed::Box;
-
-    #[test]
-    fn fact_works() {
-        let fact = {
-            struct Fact {}
-            impl RecurFn<i32, i32> for Fact {
-                fn body(&self, recur: impl Fn(i32) -> i32, arg: i32) -> i32 {
-                    if arg == 0 {
-                        1
-                    } else {
-                        arg * recur(arg - 1)
-                    }
-                }
-            }
-            Fact {}
-        };
-        assert_eq!(3628800, fact.call(10));
-    }
-
-    #[test]
-    fn as_recur_fn_works() {
-        let fact = as_recur_fn!(fact(n: i32) -> i32 {
-            if n == 0 { 1 } else { n * fact(n - 1) }
-        });
-        assert_eq!(6, fact.call(3));
-        assert_eq!(3, fact.body(|_| 1, 3));
-    }
-
-    #[test]
-    fn dyn_works() {
-        let fact = recur_fn(|fact, n: usize| if n <= 1 { 1 } else { n * fact(n - 1) });
-        let dyn_fact: &DynRecurFn<_, _> = &fact;
-        assert_eq!(dyn_fact.call(5), 120);
-        assert_eq!(fact.call(5), 120);
-        let dyn_fact: Box<DynRecurFn<_, _> + Send + Sync> = Box::new(fact);
-        assert_eq!(dyn_fact.call(5), 120);
-    }
-}
-*/
