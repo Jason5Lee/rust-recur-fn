@@ -9,7 +9,7 @@
 //! ```
 //! use recur_fn::{recur_fn, RecurFn};
 //!
-//! let fib = recur_fn(|fib, n: u64| {
+//! let fib = recur_fn(|fib, n: i32| {
 //!     if n <= 1 {
 //!         n
 //!     } else {
@@ -26,7 +26,7 @@
 //! use recur_fn::{recur_fn, RecurFn};
 //! use std::cell::RefCell;
 //!
-//! let fib = recur_fn(|fib, n: u64| {
+//! let fib = recur_fn(|fib, n: i32| {
 //!     if n <= 1 {
 //!         n
 //!     } else {
@@ -36,7 +36,7 @@
 //!
 //! let log = RefCell::new(Vec::new());
 //!
-//! let fib_with_logging = recur_fn(|recur, n: u64| {
+//! let fib_with_logging = recur_fn(|recur, n: i32| {
 //!     log.borrow_mut().push(n);
 //!     fib.body(recur, n)
 //! });
@@ -55,9 +55,9 @@
 //!
 //! let fib = {
 //!     struct Fib {}
-//!     impl RecurFn<u64, u64> for Fib {
+//!     impl RecurFn<i32, i32> for Fib {
 //!         #[inline]
-//!         fn body(&self, fib: impl Fn(u64) -> u64, n: u64) -> u64 {
+//!         fn body(&self, fib: impl Fn(i32) -> i32, n: i32) -> i32 {
 //!             if n <= 1 {
 //!                 n
 //!             } else {
@@ -77,7 +77,7 @@
 //! ```
 //! use recur_fn::{as_recur_fn, RecurFn};
 //!
-//! let fact = as_recur_fn!(fact(n: u64) -> u64 {
+//! let fact = as_recur_fn!(fact(n: i32) -> i32 {
 //!     if n == 0 { 1 } else { n * fact(n - 1) }
 //! });
 //! assert_eq!(6, fact.call(3));
@@ -93,14 +93,7 @@
 //! use core::ops::Deref;
 //!
 //! let dyn_fact: &DynRecurFn<_, _> =
-//!     &recur_fn(|fact, n: u64| if n == 0 { 1 } else { n * fact(n - 1) });
-//!
-//! // Any type that derefs to `DynRecurFn` implements `RecurFn`.
-//! fn test_fact_deref(fact: impl RecurFn<u64, u64>) {
-//!     assert_eq!(6, fact.call(3));
-//!     assert_eq!(0, fact.body(|_| 0, 3));
-//! }
-//! test_fact_deref(dyn_fact);
+//!     &recur_fn(|fact, n: i32| if n == 0 { 1 } else { n * fact(n - 1) });
 //! ```
 
 #![no_std]
@@ -140,17 +133,23 @@ impl<Arg, Output, R: RecurFn<Arg, Output>> DynRecurFn<Arg, Output> for R {
     }
 }
 
-impl<Arg, Output, D: Deref> RecurFn<Arg, Output> for D
-where
-    D::Target: DynRecurFn<Arg, Output>,
-{
-    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-        self.deref().dyn_body(&recur, arg)
-    }
+macro_rules! impl_dyn_with_markers {
+    ($($marker:ident),*) => {
+        impl<Arg, Output> RecurFn<Arg, Output> for DynRecurFn<Arg, Output>$( + $marker)*
+        {
+            fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+                self.dyn_body(&recur, arg)
+            }
+        }
+    };
 }
+impl_dyn_with_markers! {}
+impl_dyn_with_markers! {Send}
+impl_dyn_with_markers! {Sync}
+impl_dyn_with_markers! {Send, Sync}
 
 /*
-/// The recursive function trait that might mutate the states.
+/// The recursive function trait that might mutate some states.
 /// It's similar to `RecurFn`, except it accept `&mut self` and `FnMut`.
 /// Currently there's a borrow check error that I can't resolve.
 pub trait RecurFnMut<Arg, Output> {
@@ -165,6 +164,50 @@ pub trait RecurFnMut<Arg, Output> {
     }
 }*/
 
+/// Pointer to `RecurFn` Wrapper.
+pub struct PointerRecurFn<D>(D);
+impl<Arg, Output, D> RecurFn<Arg, Output> for PointerRecurFn<D>
+where
+    D: Deref,
+    D::Target: RecurFn<Arg, Output>,
+{
+    #[inline]
+    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        self.0.body(recur, arg)
+    }
+}
+
+/// Returns a `RecurFn` implementation by a pointer
+/// to `RecurFn` (i.e. a implementation of `Deref` whose `Target`
+/// implements `RecurFn`).
+/// 
+/// # Examples
+///
+/// ```
+/// use recur_fn::{RecurFn, recur_fn, from_pointer};
+///
+/// fn test_fact(fact: impl RecurFn<i32, i32>) {
+///     assert_eq!(fact.call(5), 120);
+/// }
+/// let box_fact = Box::new(recur_fn(
+///     |fact, n: i32| {
+///         if n <= 1 {
+///             1
+///         } else {
+///             n * fact(n - 1)
+///         }
+///     },
+/// ));
+/// test_fact(from_pointer(box_fact));
+/// ```
+pub fn from_pointer<Arg, Output, D>(d: D) -> PointerRecurFn<D>
+where
+    D: Deref,
+    D::Target: RecurFn<Arg, Output>,
+{
+    PointerRecurFn(d)
+}
+
 /// Constructs a non-recursive `RecurFn` calling `f` directly.
 ///
 /// # Examples
@@ -172,7 +215,7 @@ pub trait RecurFnMut<Arg, Output> {
 /// ```
 /// use recur_fn::{RecurFn, direct};
 ///
-/// let double = direct(|n: u64| n * 2);
+/// let double = direct(|n: i32| n * 2);
 /// assert_eq!(4, double.call(2));
 /// assert_eq!(20, double.body(|_| 0, 10));
 /// ```
@@ -203,7 +246,7 @@ pub fn direct<Arg, Output, F: Fn(Arg) -> Output>(f: F) -> impl RecurFn<Arg, Outp
 /// ```
 /// use recur_fn::{recur_fn, RecurFn};
 ///
-/// let fib = recur_fn(|fib, n: u64| {
+/// let fib = recur_fn(|fib, n: i32| {
 ///     if n <= 1 {
 ///         n
 ///     } else {
@@ -247,7 +290,7 @@ where
 /// ```
 /// use recur_fn::{as_recur_fn, RecurFn};
 ///
-/// let fact = as_recur_fn!(fact(n: u64) -> u64 {
+/// let fact = as_recur_fn!(fact(n: i32) -> i32 {
 ///     if n == 0 { 1 } else { n * fact(n - 1) }
 /// });
 /// assert_eq!(6, fact.call(3));
@@ -283,8 +326,8 @@ mod tests {
     fn fact_works() {
         let fact = {
             struct Fact {}
-            impl RecurFn<u64, u64> for Fact {
-                fn body(&self, recur: impl Fn(u64) -> u64, arg: u64) -> u64 {
+            impl RecurFn<i32, i32> for Fact {
+                fn body(&self, recur: impl Fn(i32) -> i32, arg: i32) -> i32 {
                     if arg == 0 {
                         1
                     } else {
@@ -299,7 +342,7 @@ mod tests {
 
     #[test]
     fn as_recur_fn_works() {
-        let fact = as_recur_fn!(fact(n: u64) -> u64 {
+        let fact = as_recur_fn!(fact(n: i32) -> i32 {
             if n == 0 { 1 } else { n * fact(n - 1) }
         });
         assert_eq!(6, fact.call(3));
@@ -308,17 +351,11 @@ mod tests {
 
     #[test]
     fn dyn_works() {
-        let dyn_fib: Box<DynRecurFn<_, _> + Send + Sync> =
-            Box::new(recur_fn(
-                |fact, n: usize| {
-                    if n <= 1 {
-                        n
-                    } else {
-                        n * fact(n - 1)
-                    }
-                },
-            ));
-
-        dyn_fib.call(0);
+        let fact = recur_fn(|fact, n: usize| if n <= 1 { 1 } else { n * fact(n - 1) });
+        let dyn_fact: &DynRecurFn<_, _> = &fact;
+        assert_eq!(dyn_fact.call(5), 120);
+        assert_eq!(fact.call(5), 120);
+        let dyn_fact: Box<DynRecurFn<_, _> + Send + Sync> = Box::new(fact);
+        assert_eq!(dyn_fact.call(5), 120);
     }
 }
