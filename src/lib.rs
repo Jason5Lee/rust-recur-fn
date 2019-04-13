@@ -138,7 +138,7 @@ where
 
 macro_rules! impl_dyn_with_markers {
     ($($marker:ident),*) => {
-        impl<Arg, Output> RecurFn<Arg, Output> for DynRecurFn<Arg, Output>$( + $marker)*
+        impl<'a, Arg, Output> RecurFn<Arg, Output> for DynRecurFn<Arg, Output> + 'a$( + $marker)*
         {
             fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
                 self.dyn_body(&recur, arg)
