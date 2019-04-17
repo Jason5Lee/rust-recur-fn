@@ -46,7 +46,7 @@
 //! ```
 //!
 //! As `recur_fn` is a convenient way to construct a `RecurFn`,
-//! calling it will be slower than direct recursion.
+//! calling it is slower than direct recursion.
 //! To make it zero-cost, consider defining a struct,
 //! implementing `RecurFn` trait for it and mark the `body` method by `#[inline]`.
 //!
@@ -151,9 +151,22 @@ impl_dyn_with_markers! {Send}
 impl_dyn_with_markers! {Sync}
 impl_dyn_with_markers! {Send, Sync}
 
+/// A `RecurFn` that delegates to a pointer to a `RecurFn`.
+pub struct FromPointer<D>(D);
+impl<Arg, Output, D> RecurFn<Arg, Output> for FromPointer<D>
+where
+    D: Deref,
+    D::Target: RecurFn<Arg, Output>,
+{
+    #[inline]
+    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        self.0.body(recur, arg)
+    }
+}
+
 /// Returns a `RecurFn` implementation from a pointer
-/// to `RecurFn` (i.e. a implementation of `Deref` whose `Target`
-/// implements `RecurFn`).
+/// to `RecurFn`, i.e. a implementation of `Deref` whose `Target`
+/// implements `RecurFn`.
 ///
 /// # Examples
 ///
@@ -174,23 +187,29 @@ impl_dyn_with_markers! {Send, Sync}
 /// ));
 /// test_fact(from_pointer(box_fact));
 /// ```
-pub fn from_pointer<Arg, Output, D>(d: D) -> impl RecurFn<Arg, Output>
+pub fn from_pointer<Arg, Output, D>(d: D) -> FromPointer<D>
 where
     D: Deref,
     D::Target: RecurFn<Arg, Output>,
 {
-    struct PointerRecurFn<D>(D);
-    impl<Arg, Output, D> RecurFn<Arg, Output> for PointerRecurFn<D>
-    where
-        D: Deref,
-        D::Target: RecurFn<Arg, Output>,
-    {
-        #[inline]
-        fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-            self.0.body(recur, arg)
-        }
+    FromPointer(d)
+}
+
+/// A `RecurFn` that doesn't call `recur` parameter in its body.
+pub struct Direct<F>(F);
+
+impl<Arg, Output, F> RecurFn<Arg, Output> for Direct<F>
+where
+    F: Fn(Arg) -> Output,
+{
+    #[inline]
+    fn body(&self, _: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        (self.0)(arg)
     }
-    PointerRecurFn(d)
+
+    fn call(&self, arg: Arg) -> Output {
+        (self.0)(arg)
+    }
 }
 
 /// Constructs a non-recursive `RecurFn` calling `f` directly.
@@ -204,24 +223,24 @@ where
 /// assert_eq!(4, double.call(2));
 /// assert_eq!(20, double.body(|_| 0, 10));
 /// ```
-pub fn direct<Arg, Output, F: Fn(Arg) -> Output>(f: F) -> impl RecurFn<Arg, Output> {
-    struct RecurFnImpl<F>(F);
+pub fn direct<Arg, Output, F: Fn(Arg) -> Output>(f: F) -> Direct<F> {
+    Direct(f)
+}
 
-    impl<Arg, Output, F> RecurFn<Arg, Output> for RecurFnImpl<F>
-    where
-        F: Fn(Arg) -> Output,
-    {
-        #[inline]
-        fn body(&self, _: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-            (self.0)(arg)
-        }
+/// A `RecurFn` that uses a closure as the body.
+pub struct Closure<F>(F);
 
-        fn call(&self, arg: Arg) -> Output {
-            (self.0)(arg)
-        }
+impl<Arg, Output, F> RecurFn<Arg, Output> for Closure<F>
+where
+    F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
+{
+    fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
+        self.0(&recur, arg)
     }
 
-    RecurFnImpl(f)
+    fn call(&self, arg: Arg) -> Output {
+        self.0(&|arg| self.call(arg), arg)
+    }
 }
 
 /// Constructs a `RecurFn` with the body speicified.
@@ -241,34 +260,19 @@ pub fn direct<Arg, Output, F: Fn(Arg) -> Output>(f: F) -> impl RecurFn<Arg, Outp
 ///
 /// assert_eq!(55, fib.call(10));
 /// ```
-pub fn recur_fn<Arg, Output, F>(body: F) -> impl RecurFn<Arg, Output>
+pub fn recur_fn<Arg, Output, F>(body: F) -> Closure<F>
 where
     F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
 {
-    struct RecurFnImpl<F>(F);
-
-    impl<Arg, Output, F> RecurFn<Arg, Output> for RecurFnImpl<F>
-    where
-        F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
-    {
-        fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-            (self.0)(&recur, arg)
-        }
-
-        fn call(&self, arg: Arg) -> Output {
-            (self.0)(&|arg| self.call(arg), arg)
-        }
-    }
-
-    RecurFnImpl(body)
+    Closure(body)
 }
 
 /// Expands a function definition to defining a struct,
 /// implementing `RecurFn` for the struct and constructing it.
 /// It can be useful if you want a zero-cost `RecurFn` implementation.
 ///
-/// You can consider it as a function definition,
-/// except `fn` keyword is replaced by this macro.
+/// The function should have exactly one argument.
+/// `impl Trait`s and generics are not supported.
 ///
 /// # Examples
 ///
