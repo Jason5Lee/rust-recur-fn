@@ -72,12 +72,12 @@
 //! ```
 //!
 //! or if the function doesn't capture anything,
-//! you can use `as_recur_fn` macro.
+//! you can use `recur_fn` macro.
 //!
 //! ```
-//! use recur_fn::{as_recur_fn, RecurFn};
+//! use recur_fn::{recur_fn, RecurFn};
 //!
-//! let fact = as_recur_fn!(fact(n: i32) -> i32 {
+//! let fact = recur_fn!(fact(n: i32) -> i32 {
 //!     if n == 0 { 1 } else { n * fact(n - 1) }
 //! });
 //! assert_eq!(6, fact.call(3));
@@ -273,9 +273,9 @@ where
 /// # Examples
 ///
 /// ```
-/// use recur_fn::{as_recur_fn, RecurFn};
+/// use recur_fn::{recur_fn, RecurFn};
 ///
-/// let fact = as_recur_fn!(fact(n: i32) -> i32 {
+/// let fact = recur_fn!(fact(n: i32) -> i32 {
 ///     if n == 0 { 1 } else { n * fact(n - 1) }
 /// });
 /// assert_eq!(6, fact.call(3));
@@ -283,7 +283,7 @@ where
 ///     fact.body(|_| 0, 3));
 /// ```
 #[macro_export]
-macro_rules! as_recur_fn {
+macro_rules! recur_fn {
     ($fn_name:ident ($arg_name:ident: $arg_type:ty) -> $output_type:ty $body:block) => {{
         #[allow(non_camel_case_types)]
         struct $fn_name {}
