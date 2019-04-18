@@ -124,15 +124,15 @@ pub trait RecurFn<Arg, Output> {
 /// The dynamic version of `RecurFn` that supports trait object.
 pub trait DynRecurFn<Arg, Output> {
     /// The body of the recursive function.
-    fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
+    fn body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
 }
 
 impl<Arg, Output, R> DynRecurFn<Arg, Output> for R
 where
     R: RecurFn<Arg, Output>,
 {
-    fn dyn_body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
-        self.body(&recur, arg)
+    fn body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
+        self.body(recur, arg)
     }
 }
 
@@ -141,7 +141,7 @@ macro_rules! impl_dyn_with_markers {
         impl<'a, Arg, Output> RecurFn<Arg, Output> for DynRecurFn<Arg, Output> + 'a$( + $marker)*
         {
             fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-                self.dyn_body(&recur, arg)
+                self.body(&recur, arg)
             }
         }
     };
