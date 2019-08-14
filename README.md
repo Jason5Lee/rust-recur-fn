@@ -1,6 +1,6 @@
 # RecurFn
 
-[![Build Status](https://jason5lee.visualstudio.com/rust-recur-fn/_apis/build/status/rust-recur-fn-CI?branchName=master)](https://jason5lee.visualstudio.com/rust-recur-fn/_build/latest?definitionId=1&branchName=master)
+[![Build Status](https://dev.azure.com/jason5lee/rust-recur-fn/_apis/build/status/Jason5Lee.rust-recur-fn?branchName=master)](https://dev.azure.com/jason5lee/rust-recur-fn/_build/latest?definitionId=12&branchName=master)
 
 A Rust library that provides a flexible way to construct and extend the recursive function.
 
