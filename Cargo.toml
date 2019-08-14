@@ -1,6 +1,6 @@
 [package]
 name = "recur-fn"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Jason Lee <jason5lee@hotmail.com>"]
 description = "A library that provides you a more flexible way to construct and extend the recursive function."
 edition = "2018"
