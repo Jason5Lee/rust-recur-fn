@@ -92,7 +92,7 @@
 //! use recur_fn::{recur_fn, RecurFn, DynRecurFn};
 //! use core::ops::Deref;
 //!
-//! let dyn_fact: &DynRecurFn<_, _> =
+//! let dyn_fact: &dyn DynRecurFn<_, _> =
 //!     &recur_fn(|fact, n: i32| if n == 0 { 1 } else { n * fact(n - 1) });
 //! ```
 
@@ -124,24 +124,24 @@ pub trait RecurFn<Arg, Output> {
 /// The dynamic version of `RecurFn` that supports trait object.
 pub trait DynRecurFn<Arg, Output> {
     /// The body of the recursive function.
-    fn body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output;
+    fn dyn_body(&self, recur: &dyn Fn(Arg) -> Output, arg: Arg) -> Output;
 }
 
 impl<Arg, Output, R> DynRecurFn<Arg, Output> for R
 where
     R: RecurFn<Arg, Output>,
 {
-    fn body(&self, recur: &Fn(Arg) -> Output, arg: Arg) -> Output {
+    fn dyn_body(&self, recur: &dyn Fn(Arg) -> Output, arg: Arg) -> Output {
         self.body(recur, arg)
     }
 }
 
 macro_rules! impl_dyn_with_markers {
     ($($marker:ident),*) => {
-        impl<'a, Arg, Output> RecurFn<Arg, Output> for DynRecurFn<Arg, Output> + 'a$( + $marker)*
+        impl<'a, Arg, Output> RecurFn<Arg, Output> for dyn DynRecurFn<Arg, Output> + 'a$( + $marker)*
         {
             fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
-                self.body(&recur, arg)
+                self.dyn_body(&recur, arg)
             }
         }
     };
@@ -232,7 +232,7 @@ pub struct Closure<F>(F);
 
 impl<Arg, Output, F> RecurFn<Arg, Output> for Closure<F>
 where
-    F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
+    F: Fn(&dyn Fn(Arg) -> Output, Arg) -> Output,
 {
     fn body(&self, recur: impl Fn(Arg) -> Output, arg: Arg) -> Output {
         self.0(&recur, arg)
@@ -262,7 +262,7 @@ where
 /// ```
 pub fn recur_fn<Arg, Output, F>(body: F) -> Closure<F>
 where
-    F: Fn(&Fn(Arg) -> Output, Arg) -> Output,
+    F: Fn(&dyn Fn(Arg) -> Output, Arg) -> Output,
 {
     Closure(body)
 }

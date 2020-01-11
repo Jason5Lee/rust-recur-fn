@@ -12,5 +12,5 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-recur-fn = "2.1"
+recur-fn = "2.2"
 ```
